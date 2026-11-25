@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="antigravity_bg">#1F1F1F</color>
+    <color name="antigravity_surface">#2A2A2D</color>
+    <color name="antigravity_border">#3C3C40</color>
+    <color name="antigravity_text_primary">#F2F2F2</color>
+    <color name="antigravity_text_secondary">#A6A6AE</color>
+    <color name="antigravity_accent">#8AB4F8</color>
+    <color name="antigravity_accent_on">#111827</color>
+    <color name="antigravity_success">#81C995</color>
+    <color name="antigravity_warning">#FDD663</color>
+</resources>

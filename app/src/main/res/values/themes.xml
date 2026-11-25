@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Antigravity" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/antigravity_bg</item>
+        <item name="colorPrimary">@color/antigravity_accent</item>
+    </style>
+
+    <style name="Theme.Antigravity.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/antigravity_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_antigravity_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.Antigravity</item>
+    </style>
+</resources>
