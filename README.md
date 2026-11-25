@@ -1,28 +1,30 @@
 # Antigravity Android
 
+English | [简体中文](./README.zh-CN.md)
+
 ![Antigravity Android Edition](./assets/banner.jpg)
 
-**反重力安卓版** —— [Google Antigravity](https://antigravity.google.com) 的轻量级原生体验安卓客户端（非官方开源封装）。
+A lightweight, native-feeling unofficial Android client for [Google Antigravity](https://antigravity.google.com).
 
-## 特性
+## Features
 
-- **启动即用**：内置独立浏览器内核，冷启动直达 Antigravity，支持 Google 账号登录、OAuth 弹窗与 Cookie 持久化。
-- **原生启动过渡**：深色启动 Logo 界面在后台静默加载页面，就绪后平滑淡出，告别白屏与生硬进度条。
-- **沉浸式自适应状态栏**：实时采样网页标头真实背景色并平滑过渡，状态栏时间/电量图标自动适配深浅反色。
-- **完整移动交互**：支持文件上传、系统下载接管、手势/返回键历史回退与双击防误触退出。
+- **Launch & Go**: Built-in browser container that opens Antigravity directly on startup, supporting Google sign-in, OAuth popups, and persistent cookies.
+- **Native Launch Splash**: Dark logo splash screen loads the page silently in the background and fades out smoothly once ready.
+- **Immersive Adaptive Status Bar**: Samples the webpage header's actual rendered background color in real time and automatically adjusts status bar icon contrast.
+- **Complete Mobile UX**: Supports file uploads, system download manager integration, back-button history navigation, and double-back to exit.
 
-## 下载安装
+## Download
 
-前往 [Releases](https://github.com/jae-jae/antigravity-android/releases) 下载最新的 `Antigravity-v1.0.3-release.apk`（支持 Android 7.0 及以上系统）。
+Get the latest `Antigravity-v1.0.3-release.apk` (Android 7.0+) from [Releases](https://github.com/jae-jae/antigravity-android/releases).
 
-## 本地构建
+## Build
 
 ```bash
 ./gradlew assembleRelease
 ```
 
-产物位于 `app/build/outputs/apk/release/`（需自行配置 `app/keystore/antigravity-release.jks` 签名或使用 `./gradlew assembleDebug`）。
+The built APK will be in `app/build/outputs/apk/release/` (provide your own `app/keystore/antigravity-release.jks` or run `./gradlew assembleDebug`).
 
-## 许可与声明
+## License & Disclaimer
 
-基于 [MIT License](./LICENSE) 开源。本项目为第三方轻量封装工具，与 Google 官方无隶属关系。
+Open-sourced under the [MIT License](./LICENSE). This is an unofficial community wrapper and is not affiliated with Google.
