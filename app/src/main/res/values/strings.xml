@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">Antigravity</string>
     <string name="press_back_again_to_exit">再按一次退出 Antigravity</string>
+    <string name="notification_channel_name">Antigravity 网页通知</string>
+    <string name="notification_channel_desc">将 Antigravity 网页内触发的消息通知转发到安卓系统通知栏</string>
 </resources>

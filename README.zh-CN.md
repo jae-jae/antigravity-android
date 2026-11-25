@@ -11,11 +11,12 @@
 - **启动即用**：内置独立浏览器内核，冷启动直达 Antigravity，支持 Google 账号登录、OAuth 弹窗与 Cookie 持久化。
 - **原生启动过渡**：深色启动 Logo 界面在后台静默加载页面，就绪后平滑淡出，告别白屏与生硬进度条。
 - **沉浸式自适应状态栏**：实时采样网页标头真实背景色并平滑过渡，状态栏时间/电量图标自动适配深浅反色。
+- **安卓系统通知桥接**：将网页内触发的 `Notification` 转为安卓原生通知栏消息（支持 Android 13+ 通知权限申请、去重聚合与点击直达页面，仅 App 存活期间生效）。
 - **完整移动交互**：支持文件上传、系统下载接管、手势/返回键历史回退与双击防误触退出。
 
 ## 下载安装
 
-前往 [Releases](https://github.com/jae-jae/antigravity-android/releases) 下载最新的 `Antigravity-v1.0.3-release.apk`（支持 Android 7.0 及以上系统）。
+前往 [Releases](https://github.com/jae-jae/antigravity-android/releases) 下载最新的 `Antigravity-v1.0.4-release.apk`（支持 Android 7.0 及以上系统）。
 
 ## 本地构建
 

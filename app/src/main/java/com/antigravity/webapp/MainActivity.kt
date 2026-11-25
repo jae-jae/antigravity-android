@@ -1,11 +1,17 @@
 package com.antigravity.webapp
 
+import android.Manifest
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.app.DownloadManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
@@ -19,6 +25,7 @@ import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -36,11 +43,20 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 
 class MainActivity : AppCompatActivity() {
@@ -54,6 +70,154 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_SPLASH_WAIT_MS = 6000L
         private const val POST_LOAD_SETTLE_MS = 380L
         private const val KEY_SPLASH_DISMISSED = "splash_dismissed"
+        private const val PREFS_NAME = "antigravity_prefs"
+        private const val PREF_NOTIF_PROMPTED = "notif_prompted"
+        private const val NOTIFICATION_CHANNEL_ID = "antigravity_web_notifications"
+        private const val EXTRA_WEB_NOTIFICATION_ID = "extra_web_notification_id"
+
+        private val NOTIFICATION_POLYFILL_JS = """
+            (function() {
+              if (window.__agNotificationPolyfilled) return;
+              var bridge = window.AndroidNotificationBridge;
+              if (!bridge) return;
+              window.__agNotificationPolyfilled = true;
+              window.__agNotifications = window.__agNotifications || {};
+              window.__agPermWaiters = window.__agPermWaiters || [];
+              var nextId = 1;
+
+              window.__agResolveNotificationPermission = function(state) {
+                var waiters = window.__agPermWaiters.splice(0, window.__agPermWaiters.length);
+                for (var i = 0; i < waiters.length; i++) {
+                  try { waiters[i](state); } catch (_) {}
+                }
+              };
+
+              window.__agOnNotificationClick = function(id) {
+                var inst = window.__agNotifications[id];
+                if (!inst) return;
+                try {
+                  var ev = new Event('click');
+                  if (typeof inst.onclick === 'function') inst.onclick(ev);
+                  inst._dispatch('click', ev);
+                } catch (_) {}
+              };
+
+              function AgNotification(title, options) {
+                options = options || {};
+                this._id = 'ag_' + (nextId++);
+                this._listeners = {};
+                this.title = String(title == null ? '' : title);
+                this.body = options.body != null ? String(options.body) : '';
+                this.tag = options.tag != null ? String(options.tag) : '';
+                this.icon = options.icon != null ? String(options.icon) : '';
+                this.data = options.data !== undefined ? options.data : null;
+                this.silent = !!options.silent;
+                this.onclick = null;
+                this.onshow = null;
+                this.onclose = null;
+                this.onerror = null;
+
+                window.__agNotifications[this._id] = this;
+                var self = this;
+                try {
+                  bridge.showNotification(this._id, this.title, this.body, this.tag, this.icon, this.silent);
+                  setTimeout(function() {
+                    var ev = new Event('show');
+                    if (typeof self.onshow === 'function') self.onshow(ev);
+                    self._dispatch('show', ev);
+                  }, 0);
+                } catch (e) {
+                  setTimeout(function() {
+                    var ev = new Event('error');
+                    if (typeof self.onerror === 'function') self.onerror(ev);
+                    self._dispatch('error', ev);
+                  }, 0);
+                }
+              }
+
+              AgNotification.prototype.addEventListener = function(type, fn) {
+                if (typeof fn !== 'function') return;
+                this._listeners[type] = this._listeners[type] || [];
+                this._listeners[type].push(fn);
+              };
+
+              AgNotification.prototype.removeEventListener = function(type, fn) {
+                var arr = this._listeners[type];
+                if (!arr) return;
+                this._listeners[type] = arr.filter(function(f) { return f !== fn; });
+              };
+
+              AgNotification.prototype.dispatchEvent = function(ev) {
+                if (!ev || !ev.type) return false;
+                this._dispatch(ev.type, ev);
+                return true;
+              };
+
+              AgNotification.prototype._dispatch = function(type, ev) {
+                var arr = this._listeners[type];
+                if (!arr) return;
+                for (var i = 0; i < arr.length; i++) {
+                  try { arr[i].call(this, ev); } catch (_) {}
+                }
+              };
+
+              AgNotification.prototype.close = function() {
+                delete window.__agNotifications[this._id];
+                try { bridge.closeNotification(this._id); } catch (_) {}
+                var ev = new Event('close');
+                if (typeof this.onclose === 'function') this.onclose(ev);
+                this._dispatch('close', ev);
+              };
+
+              Object.defineProperty(AgNotification, 'permission', {
+                configurable: true,
+                get: function() {
+                  try { return bridge.getPermissionState(); } catch (_) { return 'default'; }
+                }
+              });
+
+              Object.defineProperty(AgNotification, 'maxActions', {
+                configurable: true,
+                get: function() { return 2; }
+              });
+
+              AgNotification.requestPermission = function(cb) {
+                var promise = new Promise(function(resolve) {
+                  var current = 'default';
+                  try { current = bridge.getPermissionState(); } catch (_) {}
+                  if (current === 'granted') {
+                    resolve('granted');
+                    return;
+                  }
+                  window.__agPermWaiters.push(resolve);
+                  try {
+                    bridge.requestPermission();
+                  } catch (_) {
+                    window.__agResolveNotificationPermission('denied');
+                  }
+                });
+                if (typeof cb === 'function') {
+                  promise.then(function(res) { try { cb(res); } catch (_) {} });
+                }
+                return promise;
+              };
+
+              window.Notification = AgNotification;
+
+              if (typeof ServiceWorkerRegistration !== 'undefined' && ServiceWorkerRegistration.prototype) {
+                ServiceWorkerRegistration.prototype.showNotification = function(title, options) {
+                  return new Promise(function(resolve, reject) {
+                    try {
+                      new AgNotification(title, options || {});
+                      resolve();
+                    } catch (err) {
+                      reject(err);
+                    }
+                  });
+                };
+              }
+            })();
+        """.trimIndent()
     }
 
     private lateinit var rootContainer: LinearLayout
@@ -79,6 +243,13 @@ class MainActivity : AppCompatActivity() {
     private var launchStartAt = 0L
     private var hasDismissedSplash = false
 
+    private val notificationIdSeq = AtomicInteger(1000)
+    private val activeNotificationIds = ConcurrentHashMap<String, Int>()
+    private val webIdToKey = ConcurrentHashMap<String, String>()
+    private val largeNotificationIcon: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_antigravity_logo)
+    }
+
     private val delayedSampleRunnable = Runnable { samplePageHeaderAndFooterColors() }
     private val splashTimeoutRunnable = Runnable { dismissSplashOverlay() }
 
@@ -90,6 +261,13 @@ class MainActivity : AppCompatActivity() {
         fileUploadCallback = null
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val state = if (granted) "granted" else "denied"
+        notifyJsPermissionResolved(state)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -99,6 +277,8 @@ class MainActivity : AppCompatActivity() {
         )
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        createNotificationChannel()
 
         rootContainer = findViewById(R.id.rootContainer)
         statusBarSpacer = findViewById(R.id.statusBarSpacer)
@@ -146,6 +326,82 @@ class MainActivity : AppCompatActivity() {
         } else {
             webView.restoreState(savedInstanceState)
         }
+
+        handleNotificationIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        val webId = intent?.getStringExtra(EXTRA_WEB_NOTIFICATION_ID) ?: return
+        intent.removeExtra(EXTRA_WEB_NOTIFICATION_ID)
+        val quotedId = JSONObject.quote(webId)
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "window.__agOnNotificationClick && window.__agOnNotificationClick($quotedId);",
+                null
+            )
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = getString(R.string.notification_channel_desc)
+                enableLights(true)
+                lightColor = Color.parseColor("#8AB4F8")
+                enableVibration(true)
+            }
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun hasNotificationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    private fun requestPostNotificationsIfNeeded(forcePrompt: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            notifyJsPermissionResolved("granted")
+            return
+        }
+        if (hasNotificationPermission()) {
+            notifyJsPermissionResolved("granted")
+            return
+        }
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val alreadyPrompted = prefs.getBoolean(PREF_NOTIF_PROMPTED, false)
+        if (!forcePrompt && alreadyPrompted) {
+            return
+        }
+        prefs.edit().putBoolean(PREF_NOTIF_PROMPTED, true).apply()
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun notifyJsPermissionResolved(state: String) {
+        val quoted = JSONObject.quote(state)
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "window.__agResolveNotificationPermission && window.__agResolveNotificationPermission($quoted);",
+                null
+            )
+        }
     }
 
     private fun setupImmersiveInsets() {
@@ -182,7 +438,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleSplashDismissAfterPageLoad() {
         if (hasDismissedSplash) return
-        // Pre-match header color via DOM while splash is still covering the WebView
         sampleHeaderViaDom()
         val elapsed = System.currentTimeMillis() - launchStartAt
         val remainingMin = (MIN_SPLASH_MS - elapsed).coerceAtLeast(0L)
@@ -209,6 +464,7 @@ class MainActivity : AppCompatActivity() {
             .withEndAction {
                 splashOverlay.visibility = View.GONE
                 scheduleHeaderSampling()
+                requestPostNotificationsIfNeeded(forcePrompt = false)
             }
             .start()
     }
@@ -294,6 +550,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (!isPopup) {
+            targetWebView.addJavascriptInterface(NotificationBridge(), "AndroidNotificationBridge")
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                WebViewCompat.addDocumentStartJavaScript(
+                    targetWebView,
+                    NOTIFICATION_POLYFILL_JS,
+                    setOf("https://*")
+                )
+            }
+
             targetWebView.setOnScrollChangeListener { _, _, _, _, _ ->
                 if (!hasDismissedSplash) return@setOnScrollChangeListener
                 val now = System.currentTimeMillis()
@@ -325,8 +590,15 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                if (!isPopup && hasDismissedSplash) {
-                    progressBar.visibility = View.VISIBLE
+                if (!isPopup) {
+                    if (hasDismissedSplash) {
+                        progressBar.visibility = View.VISIBLE
+                    }
+                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) &&
+                        url?.startsWith("https://") == true
+                    ) {
+                        view?.evaluateJavascript(NOTIFICATION_POLYFILL_JS, null)
+                    }
                 }
             }
 
@@ -345,6 +617,11 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 if (!isPopup) {
                     progressBar.visibility = View.GONE
+                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) &&
+                        url?.startsWith("https://") == true
+                    ) {
+                        view?.evaluateJavascript(NOTIFICATION_POLYFILL_JS, null)
+                    }
                     if (!hasDismissedSplash) {
                         scheduleSplashDismissAfterPageLoad()
                     } else {
@@ -441,6 +718,103 @@ class MainActivity : AppCompatActivity() {
                 val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
                 dm.enqueue(request)
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    private inner class NotificationBridge {
+
+        @JavascriptInterface
+        fun getPermissionState(): String {
+            return if (hasNotificationPermission()) {
+                "granted"
+            } else {
+                val prompted = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getBoolean(PREF_NOTIF_PROMPTED, false)
+                if (prompted) "denied" else "default"
+            }
+        }
+
+        @JavascriptInterface
+        fun requestPermission() {
+            mainHandler.post {
+                val url = webView.url ?: ""
+                if (!url.startsWith("https://")) {
+                    notifyJsPermissionResolved("denied")
+                    return@post
+                }
+                requestPostNotificationsIfNeeded(forcePrompt = true)
+            }
+        }
+
+        @JavascriptInterface
+        fun showNotification(
+            webId: String,
+            title: String,
+            body: String,
+            tag: String,
+            iconUrl: String,
+            silent: Boolean
+        ) {
+            mainHandler.post {
+                val url = webView.url ?: ""
+                if (!url.startsWith("https://") || !hasNotificationPermission()) {
+                    return@post
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ActivityCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    return@post
+                }
+
+                val safeTitle = title.trim().ifEmpty { getString(R.string.app_name) }.take(120)
+                val safeBody = body.trim().take(500)
+                val key = tag.trim().ifEmpty { webId }
+                val androidId = activeNotificationIds.getOrPut(key) {
+                    notificationIdSeq.incrementAndGet()
+                }
+                webIdToKey[webId] = key
+
+                val tapIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(EXTRA_WEB_NOTIFICATION_ID, webId)
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    this@MainActivity,
+                    androidId,
+                    tapIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val builder = NotificationCompat.Builder(this@MainActivity, NOTIFICATION_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_antigravity)
+                    .setLargeIcon(largeNotificationIcon)
+                    .setColor(Color.parseColor("#8AB4F8"))
+                    .setContentTitle(safeTitle)
+                    .setContentIntent(pendingIntent)
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                    .setSilent(silent)
+
+                if (safeBody.isNotEmpty()) {
+                    builder.setContentText(safeBody)
+                    builder.setStyle(NotificationCompat.BigTextStyle().bigText(safeBody))
+                }
+
+                NotificationManagerCompat.from(this@MainActivity).notify(androidId, builder.build())
+            }
+        }
+
+        @JavascriptInterface
+        fun closeNotification(webId: String) {
+            mainHandler.post {
+                val key = webIdToKey.remove(webId) ?: webId
+                val androidId = activeNotificationIds.remove(key) ?: return@post
+                NotificationManagerCompat.from(this@MainActivity).cancel(androidId)
             }
         }
     }

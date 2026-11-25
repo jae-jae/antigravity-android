@@ -11,8 +11,8 @@ android {
         applicationId = "com.antigravity.webapp"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
     }
 
     signingConfigs {
@@ -59,4 +59,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.webkit:webkit:1.12.1")
 }
