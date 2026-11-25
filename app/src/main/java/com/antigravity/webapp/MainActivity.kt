@@ -77,6 +77,7 @@ class MainActivity : AppCompatActivity() {
 
         private val NOTIFICATION_POLYFILL_JS = """
             (function() {
+              if (window.location && window.location.protocol !== 'https:') return;
               if (window.__agNotificationPolyfilled) return;
               var bridge = window.AndroidNotificationBridge;
               if (!bridge) return;
@@ -246,7 +247,7 @@ class MainActivity : AppCompatActivity() {
     private val notificationIdSeq = AtomicInteger(1000)
     private val activeNotificationIds = ConcurrentHashMap<String, Int>()
     private val webIdToKey = ConcurrentHashMap<String, String>()
-    private val largeNotificationIcon: Bitmap by lazy {
+    private val largeNotificationIcon: Bitmap? by lazy {
         BitmapFactory.decodeResource(resources, R.drawable.ic_antigravity_logo)
     }
 
@@ -552,11 +553,14 @@ class MainActivity : AppCompatActivity() {
         if (!isPopup) {
             targetWebView.addJavascriptInterface(NotificationBridge(), "AndroidNotificationBridge")
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                WebViewCompat.addDocumentStartJavaScript(
-                    targetWebView,
-                    NOTIFICATION_POLYFILL_JS,
-                    setOf("https://*")
-                )
+                try {
+                    WebViewCompat.addDocumentStartJavaScript(
+                        targetWebView,
+                        NOTIFICATION_POLYFILL_JS,
+                        setOf("*")
+                    )
+                } catch (_: Throwable) {
+                }
             }
 
             targetWebView.setOnScrollChangeListener { _, _, _, _, _ ->
@@ -791,7 +795,6 @@ class MainActivity : AppCompatActivity() {
 
                 val builder = NotificationCompat.Builder(this@MainActivity, NOTIFICATION_CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_stat_antigravity)
-                    .setLargeIcon(largeNotificationIcon)
                     .setColor(Color.parseColor("#8AB4F8"))
                     .setContentTitle(safeTitle)
                     .setContentIntent(pendingIntent)
@@ -799,6 +802,8 @@ class MainActivity : AppCompatActivity() {
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                     .setSilent(silent)
+
+                largeNotificationIcon?.let { builder.setLargeIcon(it) }
 
                 if (safeBody.isNotEmpty()) {
                     builder.setContentText(safeBody)

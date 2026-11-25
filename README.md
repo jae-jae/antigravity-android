@@ -16,7 +16,7 @@ A lightweight, native-feeling unofficial Android client for [Google Antigravity]
 
 ## Download
 
-Get the latest `Antigravity-v1.0.4-release.apk` (Android 7.0+) from [Releases](https://github.com/jae-jae/antigravity-android/releases).
+Get the latest `Antigravity-v1.0.5-release.apk` (Android 7.0+) from [Releases](https://github.com/jae-jae/antigravity-android/releases).
 
 ## Build
 

@@ -16,7 +16,7 @@
 
 ## 下载安装
 
-前往 [Releases](https://github.com/jae-jae/antigravity-android/releases) 下载最新的 `Antigravity-v1.0.4-release.apk`（支持 Android 7.0 及以上系统）。
+前往 [Releases](https://github.com/jae-jae/antigravity-android/releases) 下载最新的 `Antigravity-v1.0.5-release.apk`（支持 Android 7.0 及以上系统）。
 
 ## 本地构建
 
